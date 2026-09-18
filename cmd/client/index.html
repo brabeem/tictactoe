@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tic-tac-toe</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 40px; text-align: center; }
+  #status { font-size: 18px; min-height: 24px; }
+  #board { display: grid; grid-template-columns: repeat(3, 80px); gap: 4px; justify-content: center; margin: 20px auto; }
+  .cell { height: 80px; font-size: 32px; cursor: pointer; }
+  .cell:disabled { cursor: default; }
+  #restart { padding: 8px 16px; font-size: 16px; }
+  [hidden] { display: none; }
+</style>
+</head>
+<body>
+<h1>Tic-tac-toe</h1>
+<p id="status">connecting…</p>
+<div id="board"></div>
+<button id="restart" hidden>Play again</button>
+
+<script>
+const SERVER = {{.}};
+
+const statusEl = document.getElementById("status");
+const restartEl = document.getElementById("restart");
+const boardEl = document.getElementById("board");
+
+let me = "";
+let cells = Array(9).fill("");
+let myTurn = false;
+let version = -1;
+
+const buttons = cells.map(function (_, i) {
+  const b = document.createElement("button");
+  b.className = "cell";
+  b.onclick = function () { move(i); };
+  boardEl.appendChild(b);
+  return b;
+});
+
+const ws = new WebSocket(SERVER);
+ws.onclose = function () {
+  myTurn = false;
+  render();
+  if (!statusEl.dataset.final) statusEl.textContent = "disconnected";
+};
+ws.onmessage = function (e) { handle(JSON.parse(e.data)); };
+
+function send(type, payload) { ws.send(JSON.stringify({ type: type, payload: payload })); }
+function move(cell) { if (myTurn && cells[cell] === "") send("move", { cell: cell }); }
+restartEl.onclick = function () { restartEl.hidden = true; send("restart", null); };
+
+function newBoard() {
+  cells = Array(9).fill("");
+  myTurn = false;
+  version = -1;
+  render();
+}
+
+function handle(msg) {
+  const p = msg.payload || {};
+  switch (msg.type) {
+    case "welcome":
+      me = p.playerId;
+      break;
+    case "waiting":
+      statusEl.textContent = "waiting for an opponent…";
+      newBoard();
+      break;
+    case "match_found":
+      statusEl.textContent = "match found — you are " + p.mark;
+      newBoard();
+      break;
+    case "state":
+      showState(p);
+      break;
+    case "opponent_left":
+      statusEl.textContent = "opponent left";
+      myTurn = false;
+      restartEl.hidden = false;
+      render();
+      break;
+    case "timed_out":
+      statusEl.textContent = "you took too long, so you were disconnected";
+      statusEl.dataset.final = "1";
+      myTurn = false;
+      render();
+      break;
+    case "error":
+      statusEl.textContent = p.message;
+      break;
+  }
+}
+
+function showState(s) {
+  if (s.version <= version) return; // a newer board already arrived
+  version = s.version;
+  cells = s.cells;
+  myTurn = s.yourTurn;
+
+  if (s.gameOver) {
+    statusEl.textContent = s.draw ? "draw" : (s.winner === me ? "you win" : "you lose");
+    restartEl.hidden = false;
+  } else {
+    statusEl.textContent = s.yourTurn ? "your turn" : "opponent's turn";
+  }
+  render();
+}
+
+function render() {
+  buttons.forEach(function (b, i) {
+    b.textContent = cells[i];
+    b.disabled = !myTurn || cells[i] !== "";
+  });
+}
+</script>
+</body>
+</html>
