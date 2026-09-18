@@ -35,9 +35,3 @@ The first two players to connect are paired; a third waits for a fourth.
 ```sh
 go test -race ./...
 ```
-
-## Not implemented
-
-- Players are not notified when the server shuts down; their connections simply
-  end.
-- No reconnection: a dropped connection is a new player with a new ID.
